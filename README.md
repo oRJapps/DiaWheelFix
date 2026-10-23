@@ -1,6 +1,6 @@
 # DiaWheelFix
 
-Windows 版 [Dia](https://www.diabrowser.com/) ブラウザで、マウスホイールを回してもページがスクロールしない問題を直す小さなツールです。
+Windows 版 [Dia](https://www.diabrowser.com/) ブラウザで、マウスホイールを回してもページがスクロールしない問題を解消するツールです。
 
 > 非公式ツールです。The Browser Company とは関係ありません。
 
