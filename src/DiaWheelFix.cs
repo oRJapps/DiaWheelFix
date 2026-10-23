@@ -31,12 +31,12 @@ static class DiaWheelFix {
 
     // Double-clicked: ask the user
     if (File.Exists(ShortcutPath)) {
-      var r = MessageBox.Show("DiaWheelFix はインストール済みです。\n\nアンインストール（停止して自動起動を解除）しますか？",
+      var r = MessageBox.Show("DiaWheelFix はインストール済みです。\n\nアンインストールしますか？\nツールを止めて、自動起動も解除します。",
                               AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
       if (r == DialogResult.Yes) { Uninstall(); MessageBox.Show("アンインストールしました。", AppName); }
       else StartForwarder();
     } else {
-      var r = MessageBox.Show("Dia のページでマウスホイールが効くようにします。\n\nインストール（今すぐ起動し、サインイン時に自動起動）しますか？",
+      var r = MessageBox.Show("Dia のページでマウスホイールが効くようにします。\n\nインストールしますか？\nすぐに起動し、次からは Windows へのサインイン時に自動で起動します。",
                               AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
       if (r == DialogResult.Yes) { Install(); MessageBox.Show("インストールしました。Dia のページでホイールを回してみてください。", AppName); }
     }
