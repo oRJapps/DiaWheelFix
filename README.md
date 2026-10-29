@@ -15,9 +15,13 @@ Windows 版 [Dia](https://www.diabrowser.com/) ブラウザで、マウスホイ
 
 ### アップデート
 
-v1.0.1 から、1日に1回 GitHub で新しいバージョンがあるかを確かめます。新しいバージョンがあると、ダウンロードページを開くかを聞く画面が出ます。GitHub から読むのはバージョン番号だけで、パソコンの情報は送りません。
+v1.0.1 から、起動したときと1日に1回、GitHub で新しいバージョンがあるかを確かめます。新しいバージョンがあるときだけ、ダウンロードページを開くかを聞く画面が出ます。パソコンの情報は送りません。v1.0.0 は確かめません。
 
-アップデートするときは、まず今の `DiaWheelFix.exe` をダブルクリックして「はい」を押し、いったんアンインストールします。次に、新しい `DiaWheelFix.exe` を同じ場所に上書きし、ダブルクリックして「はい」を押します。動いている間は exe を上書きできないためです。v1.0.0 は自動で確かめないので、[Releases](../../releases) から手動でアップデートしてください。
+アップデートは、次の手順で行ってください。
+
+1. 今の `DiaWheelFix.exe` をダブルクリックして「はい」を押し、いったんアンインストールします（動いている間は exe を上書きできないためです）。
+2. [Releases](../../releases) から新しい `DiaWheelFix.exe` をダウンロードし、同じ場所に上書きします。
+3. 新しい `DiaWheelFix.exe` をダブルクリックして「はい」を押します。
 
 ### コマンドでの操作
 
@@ -62,9 +66,13 @@ The exe is not signed, so a SmartScreen warning may appear right after you downl
 
 ### Updates
 
-Starting with v1.0.1, the tool checks GitHub once a day for a newer version. If one is available, it asks whether to open the download page. It only reads the version number from GitHub and sends no information about your PC.
+Starting with v1.0.1, the tool checks GitHub for a newer version when it starts and once a day after that. Only when one is available does it ask whether to open the download page. It sends no information about your PC. v1.0.0 doesn't check.
 
-To update, first double-click the current `DiaWheelFix.exe` and click "Yes" to uninstall it. Then overwrite it with the new `DiaWheelFix.exe` in the same place, double-click it, and click "Yes". The exe can't be overwritten while it is running. v1.0.0 doesn't check automatically, so update it manually from [Releases](../../releases).
+To update:
+
+1. Double-click the current `DiaWheelFix.exe` and click "Yes" to uninstall it (the exe can't be overwritten while it is running).
+2. Download the new `DiaWheelFix.exe` from [Releases](../../releases) and overwrite the old one in the same place.
+3. Double-click the new `DiaWheelFix.exe` and click "Yes".
 
 ### Command-line use
 

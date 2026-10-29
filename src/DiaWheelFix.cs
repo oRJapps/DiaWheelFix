@@ -6,6 +6,7 @@
 //   DiaWheelFix.exe --run        run the wheel forwarder (used by the startup shortcut)
 //   DiaWheelFix.exe --debug      like --run, and logs wheel events to %TEMP%\DiaWheelFix.log
 //   DiaWheelFix.exe --check-update  write the update check result to %TEMP%\DiaWheelFix-update.log
+//   DiaWheelFix.exe --update-now    self-update without asking (no restart), result in %TEMP%\DiaWheelFix-update.log
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -36,6 +37,13 @@ static class DiaWheelFix {
       string latest = LatestVersion();
       File.WriteAllText(Path.Combine(Path.GetTempPath(), "DiaWheelFix-update.log"),
         "mine=" + Assembly.GetExecutingAssembly().GetName().Version + " latest=" + latest + " newer=" + (latest != null && IsNewer(latest)));
+      return 0;
+    }
+    if (mode == "--update-now") {   // self-update without asking (no restart); result in %TEMP%\DiaWheelFix-update.log
+      string url;
+      string latest = LatestRelease(out url);
+      string result = latest == null ? "no release" : !IsNewer(latest) ? "up to date" : (SelfUpdate(url, latest) ?? "updated");
+      File.WriteAllText(Path.Combine(Path.GetTempPath(), "DiaWheelFix-update.log"), "latest=" + latest + " url=" + url + " result=" + result);
       return 0;
     }
     if (mode == "--install") { Install(); return 0; }
@@ -130,22 +138,24 @@ static class DiaWheelFix {
 
   static string Cls(IntPtr h) { var s = new StringBuilder(64); GetClassName(h, s, 64); return s.ToString(); }
 
+  static Mutex runMutex;   // held while the forwarder runs; closed by the updater before restarting
+
   static void RunForwarder() {
     bool created;
-    using (var mutex = new Mutex(true, @"Local\DiaWheelFix", out created)) {
-      if (!created) return;   // already running for this user
-      new Thread(UpdateLoop) { IsBackground = true }.Start();
-      IntPtr hook = SetWindowsHookEx(14, proc, GetModuleHandle(null), 0);   // WH_MOUSE_LL
-      // Windows silently drops a low-level hook that once answers too slowly (e.g. after sleep),
-      // so re-install it every 30 seconds.
-      SetTimer(IntPtr.Zero, IntPtr.Zero, 30000, IntPtr.Zero);
-      MSG m;
-      while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) {
-        if (m.m == 0x0113) {   // WM_TIMER
-          IntPtr fresh = SetWindowsHookEx(14, proc, GetModuleHandle(null), 0);
-          if (fresh != IntPtr.Zero) { UnhookWindowsHookEx(hook); hook = fresh; }
-          Log("rehook " + (fresh != IntPtr.Zero));
-        }
+    runMutex = new Mutex(true, @"Local\DiaWheelFix", out created);
+    if (!created) return;   // already running for this user
+    DeleteQuietly(OldExePath);   // left over from a previous self-update
+    new Thread(UpdateLoop) { IsBackground = true }.Start();
+    IntPtr hook = SetWindowsHookEx(14, proc, GetModuleHandle(null), 0);   // WH_MOUSE_LL
+    // Windows silently drops a low-level hook that once answers too slowly (e.g. after sleep),
+    // so re-install it every 30 seconds.
+    SetTimer(IntPtr.Zero, IntPtr.Zero, 30000, IntPtr.Zero);
+    MSG m;
+    while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) {
+      if (m.m == 0x0113) {   // WM_TIMER
+        IntPtr fresh = SetWindowsHookEx(14, proc, GetModuleHandle(null), 0);
+        if (fresh != IntPtr.Zero) { UnhookWindowsHookEx(hook); hook = fresh; }
+        Log("rehook " + (fresh != IntPtr.Zero));
       }
     }
   }
@@ -158,28 +168,95 @@ static class DiaWheelFix {
     get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName, "notified.txt"); }
   }
 
+  // Self-install on "Yes" is switched off for now: the prompt only opens the download page
+  const bool AutoInstall = false;
+
+  // Checks right after startup (retrying every minute, up to 10 times, while offline), then once a day.
+  // Shows nothing when this is already the latest version.
   static void UpdateLoop() {
-    Thread.Sleep(60000);   // let the network come up after sign-in
+    Thread.Sleep(5000);
+    int offlineRetries = 10;
     while (true) {
-      string latest = LatestVersion();
+      string url;
+      string latest = LatestRelease(out url);
+      if (latest == null && offlineRetries-- > 0) { Thread.Sleep(60000); continue; }
       if (latest != null && IsNewer(latest) && ReadNotified() != latest) {
         WriteNotified(latest);
-        var r = MessageBox.Show("DiaWheelFix の新しいバージョン（" + latest + "）があります。\n\nダウンロードページを開きますか？",
+        if (!AutoInstall) {
+          var r0 = MessageBox.Show("DiaWheelFix の新しいバージョン（" + latest + "）があります。\n\nダウンロードページを開きますか？",
+                                   AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+          if (r0 == DialogResult.Yes) Process.Start(ReleasesPage);
+          Thread.Sleep(TimeSpan.FromHours(24));
+          continue;
+        }
+        var r = MessageBox.Show("DiaWheelFix の新しいバージョン（" + latest + "）があります。\n\n今すぐアップデートしますか？",
                                 AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Information);
-        if (r == DialogResult.Yes) Process.Start(ReleasesPage);
+        if (r == DialogResult.Yes) {
+          string error = SelfUpdate(url, latest);
+          if (error == null) {
+            MessageBox.Show(latest + " にアップデートしました。", AppName);
+            runMutex.Close();   // let the new exe take over
+            Process.Start(new ProcessStartInfo(ExePath, "--run") { UseShellExecute = false });
+            Environment.Exit(0);
+          }
+          var r2 = MessageBox.Show("アップデートできませんでした。\n" + error + "\n\nダウンロードページを開きますか？",
+                                   AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+          if (r2 == DialogResult.Yes) Process.Start(ReleasesPage);
+        }
       }
       Thread.Sleep(TimeSpan.FromHours(24));
     }
   }
 
-  // Latest release tag such as "v1.0.2", or null when offline / anything fails
-  static string LatestVersion() {
+  // Self-update: download the release exe next to this one, check it, then swap the files.
+  // A running exe can be renamed but not overwritten, so this one becomes DiaWheelFix.old.exe.
+  const string DownloadPrefix = "https://github.com/oRJapps/DiaWheelFix/releases/download/";
+  static string OldExePath { get { return Path.Combine(Path.GetDirectoryName(ExePath), AppName + ".old.exe"); } }
+
+  // Returns null on success, or a short reason on failure
+  static string SelfUpdate(string url, string tag) {
+    if (url == null || !url.StartsWith(DownloadPrefix)) return "ダウンロードするファイルが見つかりません。";
+    string newPath = ExePath + ".new";
+    try {
+      using (var wc = new System.Net.WebClient()) {
+        wc.Headers.Add("User-Agent", AppName);
+        wc.DownloadFile(url, newPath);
+      }
+      var info = FileVersionInfo.GetVersionInfo(newPath);
+      Version want;
+      if (info.ProductName != AppName || !Version.TryParse(tag.TrimStart('v'), out want) ||
+          info.FileMajorPart != want.Major || info.FileMinorPart != want.Minor || info.FileBuildPart != Math.Max(want.Build, 0)) {
+        DeleteQuietly(newPath);
+        return "ダウンロードしたファイルが " + tag + " の DiaWheelFix ではありません。";
+      }
+      DeleteQuietly(OldExePath);
+      File.Move(ExePath, OldExePath);
+      try { File.Move(newPath, ExePath); }
+      catch { File.Move(OldExePath, ExePath); throw; }   // put the current exe back
+      return null;
+    } catch (Exception e) {
+      DeleteQuietly(newPath);
+      return e.Message;
+    }
+  }
+
+  static void DeleteQuietly(string path) {
+    try { if (File.Exists(path)) File.Delete(path); } catch { }
+  }
+
+  static string LatestVersion() { string url; return LatestRelease(out url); }
+
+  // Latest release tag such as "v1.0.2" and its exe download URL; null when offline / anything fails
+  static string LatestRelease(out string exeUrl) {
+    exeUrl = null;
     try {
       System.Net.ServicePointManager.SecurityProtocol = (System.Net.SecurityProtocolType)3072;   // TLS 1.2
       using (var wc = new System.Net.WebClient()) {
         wc.Headers.Add("User-Agent", AppName);
         string json = wc.DownloadString(ReleasesApi);
         var m = System.Text.RegularExpressions.Regex.Match(json, "\"tag_name\"\\s*:\\s*\"(v?[0-9.]+)\"");
+        var a = System.Text.RegularExpressions.Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"(https://[^\"]+/DiaWheelFix\\.exe)\"");
+        if (a.Success) exeUrl = a.Groups[1].Value;
         return m.Success ? m.Groups[1].Value : null;
       }
     } catch { return null; }
