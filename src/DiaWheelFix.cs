@@ -18,8 +18,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("DiaWheelFix")]
 [assembly: AssemblyDescription("Makes the mouse wheel scroll pages in the Dia browser on Windows")]
 [assembly: AssemblyProduct("DiaWheelFix")]
-[assembly: AssemblyVersion("1.0.2.0")]
-[assembly: AssemblyFileVersion("1.0.2.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
 
 static class DiaWheelFix {
   const string AppName = "DiaWheelFix";
