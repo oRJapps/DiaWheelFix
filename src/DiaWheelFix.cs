@@ -4,6 +4,8 @@
 //   DiaWheelFix.exe --install    register at sign-in and start (silent)
 //   DiaWheelFix.exe --uninstall  stop and unregister (silent)
 //   DiaWheelFix.exe --run        run the wheel forwarder (used by the startup shortcut)
+//   DiaWheelFix.exe --debug      like --run, and logs wheel events to %TEMP%\DiaWheelFix.log
+//   DiaWheelFix.exe --check-update  write the update check result to %TEMP%\DiaWheelFix-update.log
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -16,8 +18,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("DiaWheelFix")]
 [assembly: AssemblyDescription("Makes the mouse wheel scroll pages in the Dia browser on Windows")]
 [assembly: AssemblyProduct("DiaWheelFix")]
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
+[assembly: AssemblyVersion("1.0.2.0")]
+[assembly: AssemblyFileVersion("1.0.2.0")]
 
 static class DiaWheelFix {
   const string AppName = "DiaWheelFix";
@@ -29,6 +31,12 @@ static class DiaWheelFix {
     if (mode == "--debug") {   // like --run, but logs each wheel event to %TEMP%\DiaWheelFix.log
       log = new StreamWriter(Path.Combine(Path.GetTempPath(), "DiaWheelFix.log"), false) { AutoFlush = true };
       RunForwarder(); return 0;
+    }
+    if (mode == "--check-update") {   // writes the update check result to %TEMP%\DiaWheelFix-update.log
+      string latest = LatestVersion();
+      File.WriteAllText(Path.Combine(Path.GetTempPath(), "DiaWheelFix-update.log"),
+        "mine=" + Assembly.GetExecutingAssembly().GetName().Version + " latest=" + latest + " newer=" + (latest != null && IsNewer(latest)));
+      return 0;
     }
     if (mode == "--install") { Install(); return 0; }
     if (mode == "--uninstall") { Uninstall(); return 0; }
@@ -126,6 +134,7 @@ static class DiaWheelFix {
     bool created;
     using (var mutex = new Mutex(true, @"Local\DiaWheelFix", out created)) {
       if (!created) return;   // already running for this user
+      new Thread(UpdateLoop) { IsBackground = true }.Start();
       IntPtr hook = SetWindowsHookEx(14, proc, GetModuleHandle(null), 0);   // WH_MOUSE_LL
       // Windows silently drops a low-level hook that once answers too slowly (e.g. after sleep),
       // so re-install it every 30 seconds.
@@ -139,6 +148,56 @@ static class DiaWheelFix {
         }
       }
     }
+  }
+
+  // Update check: asks GitHub for the latest release once a day (only the version number is read)
+  const string ReleasesApi = "https://api.github.com/repos/oRJapps/DiaWheelFix/releases/latest";
+  const string ReleasesPage = "https://github.com/oRJapps/DiaWheelFix/releases/latest";
+
+  static string NotifiedFile {
+    get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName, "notified.txt"); }
+  }
+
+  static void UpdateLoop() {
+    Thread.Sleep(60000);   // let the network come up after sign-in
+    while (true) {
+      string latest = LatestVersion();
+      if (latest != null && IsNewer(latest) && ReadNotified() != latest) {
+        WriteNotified(latest);
+        var r = MessageBox.Show("DiaWheelFix の新しいバージョン（" + latest + "）があります。\n\nダウンロードページを開きますか？",
+                                AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+        if (r == DialogResult.Yes) Process.Start(ReleasesPage);
+      }
+      Thread.Sleep(TimeSpan.FromHours(24));
+    }
+  }
+
+  // Latest release tag such as "v1.0.2", or null when offline / anything fails
+  static string LatestVersion() {
+    try {
+      System.Net.ServicePointManager.SecurityProtocol = (System.Net.SecurityProtocolType)3072;   // TLS 1.2
+      using (var wc = new System.Net.WebClient()) {
+        wc.Headers.Add("User-Agent", AppName);
+        string json = wc.DownloadString(ReleasesApi);
+        var m = System.Text.RegularExpressions.Regex.Match(json, "\"tag_name\"\\s*:\\s*\"(v?[0-9.]+)\"");
+        return m.Success ? m.Groups[1].Value : null;
+      }
+    } catch { return null; }
+  }
+
+  static bool IsNewer(string tag) {
+    Version v;
+    if (!Version.TryParse(tag.TrimStart('v'), out v)) return false;
+    Version mine = Assembly.GetExecutingAssembly().GetName().Version;
+    return new Version(v.Major, v.Minor, Math.Max(v.Build, 0)) > new Version(mine.Major, mine.Minor, mine.Build);
+  }
+
+  static string ReadNotified() {
+    try { return File.ReadAllText(NotifiedFile).Trim(); } catch { return null; }
+  }
+
+  static void WriteNotified(string tag) {
+    try { Directory.CreateDirectory(Path.GetDirectoryName(NotifiedFile)); File.WriteAllText(NotifiedFile, tag); } catch { }
   }
 
   // Checked on every wheel event (no PID cache), so a reused PID can never be mistaken for Dia

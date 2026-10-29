@@ -13,6 +13,12 @@ Windows 版 [Dia](https://www.diabrowser.com/) ブラウザで、マウスホイ
 
 署名のない exe なので、ダウンロードした直後は SmartScreen の警告が出ることがあります。そのときは「詳細情報」を押してから「実行」を押すと起動できます。
 
+### アップデート
+
+v1.0.2 から、1日に1回 GitHub で新しいバージョンがあるかを確かめます。新しいバージョンがあると、ダウンロードページを開くかを聞く画面が出ます。GitHub から読むのはバージョン番号だけで、パソコンの情報は送りません。
+
+アップデートするときは、まず今の `DiaWheelFix.exe` をダブルクリックして「はい」を押し、いったんアンインストールします。次に、新しい `DiaWheelFix.exe` を同じ場所に上書きし、ダブルクリックして「はい」を押します。動いている間は exe を上書きできないためです。v1.0.1 以前は自動で確かめないので、[Releases](../../releases) から手動でアップデートしてください。
+
 ### コマンドでの操作
 
 上級者向けに、次のコマンドも使えます。
@@ -53,6 +59,12 @@ A tool that fixes an issue in the Windows version of the [Dia](https://www.diabr
 To stop using it, double-click `DiaWheelFix.exe` again and click "Yes". The tool stops, and automatic startup is turned off.
 
 The exe is not signed, so a SmartScreen warning may appear right after you download it. If it does, click "More info" and then "Run anyway" to start it.
+
+### Updates
+
+Starting with v1.0.2, the tool checks GitHub once a day for a newer version. If one is available, it asks whether to open the download page. It only reads the version number from GitHub and sends no information about your PC.
+
+To update, first double-click the current `DiaWheelFix.exe` and click "Yes" to uninstall it. Then overwrite it with the new `DiaWheelFix.exe` in the same place, double-click it, and click "Yes". The exe can't be overwritten while it is running. v1.0.1 and earlier don't check automatically, so update them manually from [Releases](../../releases).
 
 ### Command-line use
 
