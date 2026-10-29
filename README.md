@@ -31,7 +31,7 @@ src\build.cmd
 ## 注意
 
 - Dia の内部構造に依存しています。Dia のアップデートで動かなくなる可能性があります。
-- 動作を確認したバージョン：Dia 1.3.0.299
+- 動作を確認したバージョン：Dia 1.3.1.2
 
 ## ライセンス
 
@@ -72,7 +72,7 @@ src\build.cmd
 ## Notes
 
 - It depends on Dia's internal structure. A Dia update may stop it from working.
-- Tested with: Dia 1.3.0.299
+- Tested with: Dia 1.3.1.2
 - The confirmation dialogs are in Japanese.
 
 ## License

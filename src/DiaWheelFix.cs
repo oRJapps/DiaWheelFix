@@ -16,8 +16,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("DiaWheelFix")]
 [assembly: AssemblyDescription("Makes the mouse wheel scroll pages in the Dia browser on Windows")]
 [assembly: AssemblyProduct("DiaWheelFix")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
 
 static class DiaWheelFix {
   const string AppName = "DiaWheelFix";
@@ -26,6 +26,10 @@ static class DiaWheelFix {
   static int Main(string[] args) {
     string mode = args.Length > 0 ? args[0].ToLowerInvariant() : "";
     if (mode == "--run") { RunForwarder(); return 0; }
+    if (mode == "--debug") {   // like --run, but logs each wheel event to %TEMP%\DiaWheelFix.log
+      log = new StreamWriter(Path.Combine(Path.GetTempPath(), "DiaWheelFix.log"), false) { AutoFlush = true };
+      RunForwarder(); return 0;
+    }
     if (mode == "--install") { Install(); return 0; }
     if (mode == "--uninstall") { Uninstall(); return 0; }
 
@@ -88,6 +92,8 @@ static class DiaWheelFix {
   delegate IntPtr HookProc(int n, IntPtr w, IntPtr l);
   delegate bool EnumProc(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] static extern IntPtr SetWindowsHookEx(int id, HookProc f, IntPtr mod, uint tid);
+  [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr h);
+  [DllImport("user32.dll")] static extern IntPtr SetTimer(IntPtr h, IntPtr id, uint ms, IntPtr fn);
   [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr h, int n, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] static extern int GetMessage(out MSG m, IntPtr h, uint a, uint b);
   [DllImport("kernel32.dll")] static extern IntPtr GetModuleHandle(string n);
@@ -106,13 +112,32 @@ static class DiaWheelFix {
 
   const int WM_MOUSEWHEEL = 0x020A, WM_MOUSEHWHEEL = 0x020E;
   static HookProc proc = OnHook;   // kept referenced so the GC does not collect it
+  static StreamWriter log;          // set only in --debug mode
+  static int logCount;
+
+  static void Log(string s) {
+    if (log == null || logCount++ > 200) return;
+    try { log.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " " + s); } catch { }
+  }
+
+  static string Cls(IntPtr h) { var s = new StringBuilder(64); GetClassName(h, s, 64); return s.ToString(); }
 
   static void RunForwarder() {
     bool created;
     using (var mutex = new Mutex(true, @"Local\DiaWheelFix", out created)) {
       if (!created) return;   // already running for this user
-      SetWindowsHookEx(14, proc, GetModuleHandle(null), 0);   // WH_MOUSE_LL
-      MSG m; while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) { }
+      IntPtr hook = SetWindowsHookEx(14, proc, GetModuleHandle(null), 0);   // WH_MOUSE_LL
+      // Windows silently drops a low-level hook that once answers too slowly (e.g. after sleep),
+      // so re-install it every 30 seconds.
+      SetTimer(IntPtr.Zero, IntPtr.Zero, 30000, IntPtr.Zero);
+      MSG m;
+      while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) {
+        if (m.m == 0x0113) {   // WM_TIMER
+          IntPtr fresh = SetWindowsHookEx(14, proc, GetModuleHandle(null), 0);
+          if (fresh != IntPtr.Zero) { UnhookWindowsHookEx(hook); hook = fresh; }
+          Log("rehook " + (fresh != IntPtr.Zero));
+        }
+      }
     }
   }
 
@@ -133,7 +158,9 @@ static class DiaWheelFix {
     if (h == IntPtr.Zero) return IntPtr.Zero;
     IntPtr root = GetAncestor(h, 2);   // GA_ROOT
     uint pid; GetWindowThreadProcessId(root, out pid);
-    if (!IsDia(pid)) return IntPtr.Zero;
+    bool dia = IsDia(pid);
+    Log("pt=" + pt.X + "," + pt.Y + " under=" + Cls(h) + " root=" + Cls(root) + " pid=" + pid + " dia=" + dia);
+    if (!dia) return IntPtr.Zero;
     IntPtr found = IntPtr.Zero;
     EnumChildWindows(root, (c, l) => {
       var s = new StringBuilder(64); GetClassName(c, s, 64);
@@ -156,7 +183,8 @@ static class DiaWheelFix {
         if (GetKeyState(0x10) < 0) keys |= 0x4;   // Shift -> horizontal
         IntPtr wp = new IntPtr(unchecked((int)((s.mouseData & 0xFFFF0000) | keys)));
         IntPtr lp = new IntPtr(((s.pt.Y & 0xFFFF) << 16) | (s.pt.X & 0xFFFF));
-        PostMessage(page, (uint)msg, wp, lp);
+        bool ok = PostMessage(page, (uint)msg, wp, lp);
+        Log("  forwarded to " + page + " delta=" + (short)(s.mouseData >> 16) + " post=" + ok);
         return new IntPtr(1);   // swallow the original, Dia would drop it anyway
       }
     }
